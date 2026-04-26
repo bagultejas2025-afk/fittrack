@@ -1,10 +1,127 @@
 // ── App State ─────────────────────────────────────────────────────────────────
 const state = {
-  user:     null,   // { name, gender, age, height, weight, activity, goal }
-  plan:     null,   // workout plan
-  diet:     null,   // diet plan
-  session:  null,   // active workout session
+  user:     null,
+  plan:     null,
+  diet:     null,
+  session:  null,
 };
+
+// ── Voice Coach ────────────────────────────────────────────────────────────────
+const NUM_WORDS = ['','one','two','three','four','five','six','seven','eight','nine','ten',
+  'eleven','twelve','thirteen','fourteen','fifteen','sixteen','seventeen','eighteen','nineteen','twenty',
+  'twenty one','twenty two','twenty three','twenty four','twenty five',
+  'twenty six','twenty seven','twenty eight','twenty nine','thirty',
+  'thirty one','thirty two','thirty three','thirty four','thirty five',
+  'thirty six','thirty seven','thirty eight','thirty nine','forty'];
+
+const EX_TIPS = {
+  squat:          'Feet shoulder width apart, chest up, and drive through your heels.',
+  pushup:         'Hands under your shoulders, core tight, body in one straight line.',
+  lunge:          'Step forward and keep that front knee above your ankle, not past your toes.',
+  jumpingJack:    'Stay light on your feet and find a nice steady rhythm.',
+  bicepCurl:      'Pin your elbows to your sides and control the whole movement.',
+  shoulderPress:  'Brace your core and press straight overhead. No arching your back.',
+  calfRaise:      'Full range of motion. All the way up and squeeze hard at the top.',
+  highKnees:      'Drive those knees up to hip height and pump your arms with energy.',
+  plank:          'Flat back, hips level, breathe steadily and hold strong.',
+  deadlift:       'Hinge at the hips, keep your back flat, and push the floor away as you stand.',
+  benchPress:     'Retract your shoulder blades and lower the bar to your chest with control.',
+  pullUp:         'Start from a dead hang and drive your elbows down to pull yourself up.',
+  row:            'Keep your back flat and pull the weight towards your hip.',
+  latPulldown:    'Lean back slightly, pull to your upper chest, and squeeze your lats.',
+  tricepDip:      'Keep your body close to the bench and lower until elbows hit ninety degrees.',
+  lateralRaise:   'Slight bend in the elbows, raise to shoulder height, control the descent.',
+  mountainClimber:'Keep your hips down, core tight, and drive those knees fast.',
+  burpee:         'Explosive movement, land softly, and keep a steady pace throughout.',
+  default:        'Focus on your form, stay controlled, and give it everything you have.',
+};
+
+const MOTIVATE = [
+  "You're doing great, keep it up!",
+  "Stay strong, you've got this!",
+  "Looking good, push through!",
+  "Excellent work, keep that form!",
+  "Don't slow down, you're crushing it!",
+  "Breathe and push, you have more in you!",
+  "Awesome work, stay focused!",
+  "Keep that energy going, almost there!",
+  "Come on, dig deep!",
+  "That is the spirit, keep moving!",
+];
+
+const FINISH_LINES = [
+  "Incredible work! You have completed your workout. That is what champions are made of!",
+  "Workout done! You absolutely crushed it today. Recovery starts now, great job.",
+  "Amazing effort! Every single rep made you stronger. Be proud of that!",
+  "That is a wrap! Fantastic session. Rest up and come back even stronger tomorrow.",
+];
+
+function rand(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+const Coach = (() => {
+  let _voices   = [];
+  let _lastForm = 0;
+  let _lastRep  = 0;
+  const FORM_GAP = 5000;
+
+  function loadVoices() { _voices = window.speechSynthesis.getVoices(); }
+  if (window.speechSynthesis) {
+    loadVoices();
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+  }
+
+  function bestVoice() {
+    return _voices.find(v => v.name === 'Google UK English Female') ||
+           _voices.find(v => v.name === 'Google US English')         ||
+           _voices.find(v => v.lang === 'en-US' && !v.localService)  ||
+           _voices.find(v => v.lang === 'en-US')                     ||
+           _voices.find(v => v.lang && v.lang.startsWith('en'))      ||
+           null;
+  }
+
+  function say(text, opts = {}) {
+    if (!window.speechSynthesis) return;
+    if (opts.interrupt !== false) window.speechSynthesis.cancel();
+    if (window.speechSynthesis.paused) window.speechSynthesis.resume();
+    const u    = new SpeechSynthesisUtterance(text);
+    u.voice    = bestVoice();
+    u.rate     = opts.rate  ?? 1.05;
+    u.pitch    = opts.pitch ?? 1.0;
+    u.volume   = 1.0;
+    window.speechSynthesis.speak(u);
+  }
+
+  function formCue(text) {
+    const now = Date.now();
+    if (now - _lastForm < FORM_GAP) return;
+    _lastForm = now;
+    const clean = text.replace(/^[⚠✓]\s*/, '').trim();
+    say(clean, { interrupt: false, rate: 0.95 });
+  }
+
+  function repCount(n, target) {
+    if (n <= _lastRep) return;
+    _lastRep = n;
+    const word = NUM_WORDS[n] || String(n);
+    if (target && n === target) {
+      say(`${word}! Great set!`, { rate: 1.1 });
+    } else if (target && n === target - 1) {
+      say(`${word}! One more!`, { rate: 1.1 });
+    } else if (target && n === Math.floor(target / 2) && n > 1) {
+      say(`${word}! Halfway there, keep pushing!`, { rate: 1.0 });
+    } else if (!target && n > 0 && n % 5 === 0) {
+      say(`${word}! ${rand(MOTIVATE)}`, { rate: 1.05 });
+    } else {
+      say(word, { rate: 1.2 });
+    }
+  }
+
+  function resetReps() { _lastRep = 0; }
+
+  function stop() { if (window.speechSynthesis) window.speechSynthesis.cancel(); }
+
+  return { say, formCue, repCount, resetReps, stop };
+})();
 
 // ── Onboarding ─────────────────────────────────────────────────────────────────
 let selectedGender   = 'male';
@@ -355,6 +472,7 @@ function startWorkout() {
     state.session.reps = reps;
     document.getElementById('statReps').textContent = reps;
     const target = currentExercise().reps;
+    Coach.repCount(reps, target);
     if (target && reps >= target) {
       autoCompleteSet();
     }
@@ -364,6 +482,7 @@ function startWorkout() {
     const dot  = document.querySelector('#feedbackBar .fb-dot');
     dot.className = `fb-dot ${level}`;
     document.getElementById('fbText').textContent = text;
+    if (level === 'warn' || level === 'bad') Coach.formCue(text);
   };
 
   tracker.onAngle = (angle, pct) => {
@@ -374,6 +493,10 @@ function startWorkout() {
   };
 
   loadExercise();
+  const firstEx = state.session.exercises[0];
+  const firstTip = EX_TIPS[firstEx.key] || EX_TIPS.default;
+  Coach.say(`Let's go! Today's workout is ${today.label}. Starting with ${firstEx.name}. ${firstTip}`);
+
   tracker.start().then(() => {
     document.getElementById('camInit').style.display = 'none';
   }).catch(() => {
@@ -388,6 +511,13 @@ function currentExercise() {
 function loadExercise() {
   const sess = state.session;
   const ex   = currentExercise();
+
+  // Announce exercise for all except the very first (startWorkout handles that one)
+  if (sess.currentIdx > 0) {
+    const tip = EX_TIPS[ex.key] || EX_TIPS.default;
+    Coach.say(`Next up, ${ex.name}. ${tip}`, { interrupt: true });
+  }
+  Coach.resetReps();
 
   document.getElementById('exName').textContent   = ex.name;
   document.getElementById('statSet').textContent  = `${sess.currentSet}/${ex.sets}`;
@@ -477,6 +607,7 @@ function skipExercise() {
 
 // ── Rest timer ─────────────────────────────────────────────────────────────────
 function startRest(seconds) {
+  Coach.say(`Good set! Rest for ${seconds} seconds.`, { interrupt: true });
   const overlay = document.getElementById('restOverlay');
   overlay.style.display = 'flex';
   let remaining = seconds;
@@ -494,6 +625,10 @@ function endRest() {
   clearInterval(restInterval);
   document.getElementById('restOverlay').style.display = 'none';
   if (tracker) { tracker.resetReps(); }
+  Coach.resetReps();
+  const sess = state.session;
+  const ex   = currentExercise();
+  Coach.say(`Set ${sess.currentSet} of ${ex.sets}. Let's go!`, { interrupt: true });
   state.session.reps = 0;
   document.getElementById('statReps').textContent = '0';
   document.getElementById('statSet').textContent =
@@ -513,6 +648,7 @@ function updateClock() {
 // ── Finish session ─────────────────────────────────────────────────────────────
 function finishSession() {
   clearInterval(clockInterval);
+  Coach.say(rand(FINISH_LINES), { interrupt: true });
   const elapsed = Math.floor((Date.now() - sessionStart) / 1000);
   const m = Math.floor(elapsed / 60), s = elapsed % 60;
 
@@ -542,6 +678,7 @@ function exitWorkout() {
 }
 
 function cleanupSession() {
+  Coach.stop();
   if (tracker) { tracker.stop(); tracker = null; }
   clearInterval(clockInterval);
   clearInterval(restInterval);
