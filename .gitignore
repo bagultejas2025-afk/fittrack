@@ -1,0 +1,22 @@
+# Python / WAT framework (not part of webapp)
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+fitness.db
+.env
+.tmp/
+credentials.json
+token.json
+*.egg-info/
+dist/
+build/
+node_modules/
+backend/
+tools/
+workflows/
+frontend/
+requirements.txt
+CLAUDE.md
+.claude/
